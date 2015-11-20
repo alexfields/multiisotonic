@@ -8,7 +8,6 @@ Created on Fri Sep 12 13:32:58 2014
 import numpy as np
 from scipy import sparse
 import igraph
-import multiprocessing as mp
 from sklearn.base import BaseEstimator, RegressorMixin
 
 
@@ -22,7 +21,7 @@ class MultiIsotonicRegressor(BaseEstimator, RegressorMixin):
     def __init__(self, min_partition_size=1):
         self.min_partition_size = min_partition_size
 
-    def fit(self, X, y, njob=1):
+    def fit(self, X, y):
         """Fit a multidimensional isotonic regression model
 
         Parameters
@@ -69,41 +68,19 @@ class MultiIsotonicRegressor(BaseEstimator, RegressorMixin):
             graph_part.add_edges(src_snk_edges)
             graph_part.es['c'] = ([maxval]*n_internal_edges)+list(np.abs(y_part))
 
-        def _partition_graph(inQ, outQ):
-            """
-            inQ is a mp.JoinableQueue into which lists of vertices to partition are dumped
-            outQ is a mp.Queue into which the final partitions are dumped
-            """
-            while True:
-                origV = inQ.get(True)
-                if origV is None:  # poison pill
-                    inQ.put(None)
-                    inQ.task_done()
-                    return
-                currgraph = mygraph.subgraph(origV)
-                _add_source_sink(currgraph)
-                currpart = currgraph.mincut(currgraph.vcount()-2, currgraph.vcount()-1, 'c').partition
-                if len(currpart[0])-1 < self.min_partition_size or len(currpart[1])-1 < self.min_partition_size:
-                    # this partitioning would result in one of the sets being too small - so don't do it!
-                    outQ.put(origV)
-                else:
-                    inQ.put([origV[idx] for idx in currpart[0][:-1]]) # keep partitioning
-                    inQ.put([origV[idx] for idx in currpart[1][:-1]]) # keep partitioning
-                inQ.task_done()
-
-        graph_queue = mp.JoinableQueue()
-        partition_queue = mp.Queue()
-        workers = [mp.Process(target=_partition_graph, args=(graph_queue, partition_queue)) for _ in xrange(njob)]
-        for worker in workers:
-            worker.start()
-        graph_queue.put(range(len(y)))
-        graph_queue.join()
-        graph_queue.put(None)
+        def _partition_graph(origV):
+            currgraph = mygraph.subgraph(origV)
+            _add_source_sink(currgraph)
+            currpart = currgraph.mincut(currgraph.vcount()-2, currgraph.vcount()-1, 'c').partition
+            if len(currpart[0])-1 < self.min_partition_size or len(currpart[1])-1 < self.min_partition_size:
+                # this partitioning would result in one of the sets being too small - so don't do it!
+                return [origV]
+            else:
+                return _partition_graph([origV[idx] for idx in currpart[0][:-1]]) + _partition_graph([origV[idx] for idx in currpart[1][:-1]])
 
         nodes_to_cover = len(y)
         self._training_set_scores = np.empty(len(y))
-        while not partition_queue.empty():
-            part = partition_queue.get()
+        for part in _partition_graph(range(len(y))):
             self._training_set_scores[part] = ysort[part].mean()
             nodes_to_cover -= len(part)
         assert nodes_to_cover == 0
