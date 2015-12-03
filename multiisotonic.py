@@ -33,9 +33,7 @@ class MultiIsotonicRegressor(BaseEstimator, RegressorMixin):
         self : object
             Returns an instance of self
         """
-        X, y = check_X_y(X, y, force_all_finite=False, y_numeric=True)
-        # if X.shape[0] != y.size:
-        #     raise ValueError('Number of samples must match number of fit values')
+        X, y = check_X_y(X, y, y_numeric=True)  # In principle, Infs would be OK, but better to complain and let the user handle it
 
         myorder = np.argsort(X[:, 0])  # order along the first axis to at least avoid some of the comparisons
         self._training_set = X[myorder, :]
@@ -109,7 +107,7 @@ class MultiIsotonicRegressor(BaseEstimator, RegressorMixin):
         """
         if not hasattr(self, '_training_set'):
             raise NotFittedError
-        X = check_array(X, force_all_finite=False)
+        X = check_array(X)
         res = np.zeros(X.shape[0])
         for (i, Xrow) in enumerate(X):
             lower_training_set = (self._training_set <= Xrow).all(1)
