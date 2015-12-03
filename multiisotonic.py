@@ -1,14 +1,10 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Sep 12 13:32:58 2014
-
-@author: afields
-"""
+# Author: Alex Fields <alexander.fields@ucsf.edu>
 
 import numpy as np
 from scipy import sparse
 import igraph
 from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.utils.validation import NotFittedError, check_X_y, check_array
 
 
 class MultiIsotonicRegressor(BaseEstimator, RegressorMixin):
@@ -37,8 +33,9 @@ class MultiIsotonicRegressor(BaseEstimator, RegressorMixin):
         self : object
             Returns an instance of self
         """
-        assert len(X) == len(y)
-        X = np.array(X)
+        X, y = check_X_y(X, y, force_all_finite=False, y_numeric=True)
+        # if X.shape[0] != y.size:
+        #     raise ValueError('Number of samples must match number of fit values')
 
         myorder = np.argsort(X[:, 0])  # order along the first axis to at least avoid some of the comparisons
         self._training_set = X[myorder, :]
@@ -52,11 +49,10 @@ class MultiIsotonicRegressor(BaseEstimator, RegressorMixin):
         all_comparisons = sparse.csr_matrix((np.ones(indptr[-1], dtype=np.bool), np.concatenate(indices), indptr),
                                             shape=(X.shape[0], X.shape[0]), dtype=np.bool)
         edges_to_add = zip(*(all_comparisons-all_comparisons.dot(all_comparisons)).nonzero())
-        mygraph = igraph.Graph(n=len(y), edges=edges_to_add, directed=True, vertex_attrs={'y': ysort})
+        mygraph = igraph.Graph(n=y.size, edges=edges_to_add, directed=True, vertex_attrs={'y': ysort})
 
         def _add_source_sink(graph_part):
-            """ Add in the edges connecting the source and sink vertices to the internal nodes of the graph
-            """
+            """Add in the edges connecting the source and sink vertices to the internal nodes of the graph"""
             y_part = np.array(graph_part.vs['y'])
             y_part -= y_part.mean()
             maxval = np.abs(y_part).sum()+1
@@ -69,6 +65,18 @@ class MultiIsotonicRegressor(BaseEstimator, RegressorMixin):
             graph_part.es['c'] = ([maxval]*n_internal_edges)+list(np.abs(y_part))
 
         def _partition_graph(origV):
+            """Recursively partition a subgraph (indexed by origV) according to the mincut algorithm
+
+            Parameters
+            ----------
+            origV : list-like
+                A list of indices of mygraph corresponding to the subgraph to partition
+
+            Returns
+            -------
+            partition : list of lists
+                A list of lists of indices indicating the final partitioning of the graph
+            """
             currgraph = mygraph.subgraph(origV)
             _add_source_sink(currgraph)
             currpart = currgraph.mincut(currgraph.vcount()-2, currgraph.vcount()-1, 'c').partition
@@ -78,12 +86,14 @@ class MultiIsotonicRegressor(BaseEstimator, RegressorMixin):
             else:
                 return _partition_graph([origV[idx] for idx in currpart[0][:-1]]) + _partition_graph([origV[idx] for idx in currpart[1][:-1]])
 
-        nodes_to_cover = len(y)
-        self._training_set_scores = np.empty(len(y))
-        for part in _partition_graph(range(len(y))):
+        nodes_to_cover = y.size
+        self._training_set_scores = np.empty(y.size)
+        for part in _partition_graph(range(y.size)):
             self._training_set_scores[part] = ysort[part].mean()
             nodes_to_cover -= len(part)
         assert nodes_to_cover == 0
+
+        return self
 
     def predict(self, X):
         """Predict according to the isotonic fit
@@ -97,7 +107,10 @@ class MultiIsotonicRegressor(BaseEstimator, RegressorMixin):
         C : array, shape=(n_samples,)
             Predicted values
         """
-        res = np.zeros(len(X))
+        if not hasattr(self, '_training_set'):
+            raise NotFittedError
+        X = check_array(X, force_all_finite=False)
+        res = np.zeros(X.shape[0])
         for (i, Xrow) in enumerate(X):
             lower_training_set = (self._training_set <= Xrow).all(1)
             if lower_training_set.any():  # if below the entire training set, leave it at zero!
