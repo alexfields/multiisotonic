@@ -108,9 +108,12 @@ class MultiIsotonicRegressor(BaseEstimator, RegressorMixin):
         if not hasattr(self, '_training_set'):
             raise NotFittedError
         X = check_array(X)
-        res = np.zeros(X.shape[0])
+        res = np.empty(X.shape[0])
+        minval = self._training_set_scores.min()  # when the features are below the entire training set, set to the minimum training set value
         for (i, Xrow) in enumerate(X):
             lower_training_set = (self._training_set <= Xrow).all(1)
-            if lower_training_set.any():  # if below the entire training set, leave it at zero!
+            if lower_training_set.any():
                 res[i] = self._training_set_scores[lower_training_set].max()
+            else:
+                res[i] = minval
         return res
