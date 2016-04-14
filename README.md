@@ -5,4 +5,4 @@ In one dimension, points are completely ordered (i.e. every point is either grea
 
 A multidimensional isotonic regression takes a set of multidimensional points X, with corresponding values y, and returns an isotonic function with minimum squared distance from y. Algorithmically, this turns out to be mappable to a network flow problem (see [Picard 1976](http://dx.doi.org/10.1287/mnsc.22.11.1268) or [Spouge, Wan, and Wilbur 2003](http://dx.doi.org/10.1023/A:1023901806339)). This procedure is sensitive only to feature ranks, not values.
 
-This package requires [scikit-learn](https://github.com/scikit-learn/scikit-learn) and [igraph](https://github.com/igraph/python-igraph), and all sub-dependencies.
+This package requires [scikit-learn](https://github.com/scikit-learn/scikit-learn) and [python-igraph](https://github.com/igraph/python-igraph), and all sub-dependencies.
