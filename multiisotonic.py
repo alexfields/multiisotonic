@@ -1,4 +1,4 @@
-# Author: Alex Fields <alexander.fields@ucsf.edu>
+# Author: Alex Fields (github.com/alexfields)
 
 import numpy as np
 from scipy import sparse
